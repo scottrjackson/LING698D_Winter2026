@@ -1,0 +1,227 @@
+---
+title: "LING698D: Hierarchical modeling"
+subtitle: "Day 1 (after class)"
+author: "Scott Jackson"
+date: "2026-01-12"
+---
+
+# Preliminaries
+
+## Overview and outline
+
+- What's in a name? (HLM, MLM, MEM, LMM, etc.)
+  - The models we are working up to go by many names:
+  - "hierarchical linear models", "multi-level models", "mixed-effects models", "linear mixed models", etc.
+  - Just for consistency, we will use the term "mixed-effects models" or "MEMs" throughout
+- Where are we going?
+  - See course objectives in the syllabus
+  - We will work up to not only fitting and interpreting models, but also simulating data from those models
+- How will this work? (go over syllabus)
+- Class procedures:
+  - On Zoom and in-person
+  - Review + Lecture
+  - Right up to 11:00
+  - Stop me! (please, won't someone stop me?)
+  - Flexible adjustments on topics as we go
+- Out-of-class work:
+  - Quizzes
+    - Quick check-ins, surveys, etc.
+  - Practice
+    - Submit daily, with some flexibility
+  - Project
+    - Submit at the end, optional Draft by Friday
+
+## Technologies
+
+- R
+  - tricks and tips throughout
+- RStudio vs. Positron
+  - Positron is the "new hotness", but RStudio also works great
+  - I will use Positron throughout, but happy to take Qs on RStudio
+- Stan
+  - Stan is software for fitting Bayesian models.
+  - We will not go deeply into Bayesian inference or computation, but we will use Stan in the 2nd week as a tool for simulating data.
+  - We will mainly use the `rstan` and `brms` packages to work with Stan.
+- other packages
+  - `tidyverse`
+  - `lme4`
+    - many other packages such as `lmerTest` build on or add to `lme4` functionality
+  - `nlme` is an older package, mostly superceded by `lme4`, but we can look at `nlme` code if there is interest
+    - Here's a short summary of some differences between these: https://lme4.github.io/lme4/reference/lme4-package.html
+  - others?
+    - We may add other packages as we go, but these are the main ones you should make sure you have installed.
+    - If there are other packages that you are particularly interested in or would like to compare, let me know!
+- git
+  - I will post code on GitHub as well as ELMS.
+  - I encourage you to try out git, and I will go through some examples, but it is not required in this course.
+
+## Some words on "models"
+
+- We will use the word "model" a lot, and it can mean different things in different contexts.
+- At its core, the idea is that in order to make sense of the world, we build "models", which are simplified representations.
+- In practical terms, when we apply a statistical analysis, it implies some kind of model, and models always carry some kinds of assumptions.
+- Part of the goal of this course is to not just go over "how to" fit MEMs, but how to think about them and "criticize" them, meaning explore their assumptions and whether they fit our observations (data).
+- Given this, we will start simple and build up to the complexity of MEMs.
+
+# A few notes on this document format
+
+- This document is an example of a "notebook"-style document, which mixes text and code.
+- Specifically, it's an example of "R Markdown"
+  - The text is formatting in "Markdown" formatting.
+  - Markdown is a very common format for creating formatted documents (originally HTML) from simple text.
+  - Interspersed through the document are "code chunks".
+  - Each chunk begins with three "backtick" symbols followed by the characters "{r}", and three more backticks indicate the end of the code block. Here's one, for example, with no code in it:
+
+```{r}
+
+```
+
+- Your editor (RStudio, Positron, etc.) may have a shortcut button or keybinding to insert a code chunk, but you can also just type those characters to indicate the start and end of the chunk.
+- Your editor is "smart" enough to notice these chunks and to apply various functionality to them, essentially treating the code within as if it were in a plain .R script file.
+- For example: syntax highlighting, shortcuts to execute code, etc.
+- Since these chunks are treated as code, you will need to use typical comment characters if you wish to add non-code annotation, but if you need to make extended comments, simply type in the Markdown areas outside the chunk, like I'm doing here!
+
+## Flavors of R Markdown, additional functionality
+
+- We could spend an entire course just on R Markdown functionality, but I will try to show you tips and suggestions throughout.
+- The standard R Markdown document uses the extension .Rmd
+  - R scripts are simply .R
+  - Simple Markdown documents are .md
+- There are also additional "flavors", including this current document, which has a .qmd extension, which is a Quarto document.
+  - Quarto is simply an additional layer of functionality based on R Markdown, but they essentially work the same.
+- Many (but not all) R Markdown documents begin with a YAML (Yet Another Markup Language) section, which is kind of like file-level settings.  The YAML blocks may also change the behavior of how the file works, for example the YAML headers for regular .Rmd and .qmd files may have some differences.
+- Many of the "fancier" settings (like the differences between .Rmd and .qmd) really come down to how the document can be *rendered*, which usually means converting it into something that's easier for a general audience to read, like HTML, PDF, or even DOCX.
+- We won't really bother with these in this course much, but I will show you how to render a document to HTML, since this can make sharing your results much easier when you are working with people who don't want to run your code themselves.
+
+
+# Getting started with simulations
+
+- In this section, we'll look at a few basic observations and assumptions, and practice using simulations to confirm them.
+- This will introduce us to several important tools and concepts that we apply throughout the course.
+
+
+## Libraries and functions
+
+- It's generally a good practice to call any libraries/packages at the start of your file, before running other code.
+- The order of `library()` calls matters: the later calls may "mask" earlier calls.
+- For example, in the following, both the `MASS` package and the `dplyr` package (which is a package included in the `tidyverse`) have a function called `select()`. If we load `MASS` first, then when we load `tidyverse`, the output shows that the `select()` function from `MASS` is being "masked".
+- This means that if we simply use `select()`, we'll use the one from the `dplyr` package (and incidentally, that's usually what we want).
+- But we can still used the "masked" function, as long as we are explicit about which package it's coming from, for example:
+  - `MASS::select(object_we_want_to_apply_this_function_to)`
+
+
+```{r}
+library(MASS)
+library(tidyverse) # this includes ggplot2, dplyr, tidyr, readr, and many other useful packages
+
+```
+
+
+## Simulating the Central Limit Theorem
+
+- Recall from stats:
+- The Central Limit Theorem (CLT) states that if you combine (e.g., average) across many *independent* processes, the result tends towards a normal distribution.
+- We can see this in action with some simple simulations.
+
+## Simulating die rolls as a sampling process
+
+- In R, we can *sample* randomly from a set of values using the `sample()` function.
+- See below for sampling and visualizing many simulated rolls of a standard six-sided die.
+
+```{r}
+# here we can set up the set of values we want to sample from
+die_faces <- c(1, 2, 3, 4, 5, 6) # a shorter way to write this is 1:6
+
+# if we want to replicate "random" (technically pseudo-random)
+# number generation, we can use the set.seed() function, with
+# any arbitrary integer to specify a different "starting place"
+# in the random number generator state
+set.seed(42)
+sample(die_faces, 6) # this gets six different die rolls
+
+# sampling WITH REPLACEMENT means that you can get repeats
+# this is necessary if we want to sample more values than
+# there are in the set (e.g., more than 6 here)
+# NB: R defaults to replace = FALSE
+sample(die_faces, 10, replace = TRUE) # change to replace = FALSE to get an error
+
+# scientific notation can make it easier to write large numbers
+# 1e4 means "1 followed by 4 zeros" == 10000
+many_rolls <- sample(die_faces, 1e4, replace = TRUE)
+
+# we will use the `ggplot2` package throughout for data visualization
+
+# this shows that (as expected) the distribution of single die rolls
+# follows a *uniform* distribution
+ggplot(data = NULL, aes(many_rolls)) + 
+  geom_histogram()
+
+# when there are fewer, discrete numbers, geom_bar() can be
+# easier to read than a histogram
+ggplot(data = NULL, aes(many_rolls)) + 
+  geom_bar()
+```
+
+## First example of a common simulation template with a loop
+
+- In this course, we will use a few different techniques for generating/simulating data.
+- But we will often use a common pattern which goes something like:
+  1. Set up the number of simulations and other parameters with variables
+  2. Create a data frame as an empty "container" of results that we will "fill in" using a loop.
+  3. Write a loop to perform a process many times, and put the key results of each loop into the appropriate "cells" of our results data frame.
+- In practical terms, I recommend writing and testing out the code for "one time through" to make sure you are getting what you need BEFORE you put it inside a loop.
+- For example, in order to see the CLT in action, what we want is a process that:
+  1. Generates some random die rolls, to represent "independent processes"
+  2. Takes an average of these rolls
+  3. Repeats steps 1 and 2 many times, to see if those averages start to approximate a normal distribution
+- So before we do the "repetition" part, let's just do the first two steps:
+
+```{r}
+n_dice <- 2
+this_roll <- sample(die_faces, n_dice, replace = TRUE)
+this_result <- mean(this_roll)
+print(this_result)
+```
+
+- Running the above code several times should get us different results each time.
+- So now we can do the full process with repetitions below:
+
+```{r}
+# set up the number of simulations and parameters (here, the number of dice)
+n_sims <- 1e4
+n_dice <- 2
+
+# create a data frame with "empty" cells that we intend to "fill in"
+results <- data.frame(sim = 1:n_sims,
+                      roll_mean = NA)
+
+# loop through all of the planned simulations
+for(this_sim in 1:n_sims) {
+  # the same as earlier
+  this_roll <- sample(die_faces, n_dice, replace = TRUE)
+  # modified this next line to put the result into the right "cell" of our data frame
+  results[this_sim, "roll_mean"] <- mean(this_roll)
+  # the following line is what I call a "poor man's progress bar"
+  # it prints out the message every 1000 simulations (see the modulo operator)
+  if(this_sim %% 1000 == 0) { cat("just finished simulation #", this_sim, "\n") }
+}
+
+# let's take a peek at our results to see if it looks like we are getting
+# the right kinds of values
+head(results)
+
+# now we can plot the results
+ggplot(results, aes(roll_mean)) + 
+  geom_histogram(binwidth = 0.5) # modify the binwidth to make the histogram more or less "fine-grained"
+ggplot(results, aes(roll_mean)) + geom_bar()
+
+```
+
+- Play around with the code above.
+- In particular, modify the `n_dice` to represent getting an average of more dice each time, which will make the resulting distribution more and more like a normal distribution, as the CLT predicts.
+- You can also increase or decrease `n_sims`. What does that mean? Why does fewer simulations get you a "noisier" result?
+
+# The End
+
+- This is where we ended on Day 1.
+- We will catch up with the t-test and coin-flip simulations tomorrow.
