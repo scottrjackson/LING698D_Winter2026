@@ -1,0 +1,76 @@
+---
+title: "LING698D: Hierarchical modeling"
+subtitle: "Day 1"
+author: "Scott Jackson"
+date: "2026-01-12"
+---
+
+# Preliminaries
+
+## Overview and outline
+
+- What's in a name? (HLM, MLM, MEM, LMM, etc.)
+- Where are we going?
+- How will this work? (go over syllabus)
+- Class procedures:
+  - On Zoom and in-person
+  - Review + Lecture
+  - Right up to 11:30
+  - Stop me! (please, won't someone stop me?)
+  - Flexible adjustments on topics as we go
+- Out-of-class work:
+  - Practice
+    - Submit daily, with some flexibility
+  - Project
+    - Submit at the end, optional Draft by Friday
+
+## Technologies
+
+- R
+  - tricks and tips throughout
+- RStudio vs. Positron
+- Stan
+  - why?
+  - `rstan`, `brms`
+- other packages
+  - `tidyverse`
+  - `lme4`
+  - others?
+- git
+  - will post code on GitHub as well as ELMS
+
+## Some words on "models"
+
+# Getting started with simulations
+
+## Libraries and functions
+
+```{r}
+library(tidyverse) # ggplot2
+
+std.err <- function(x) {
+    return(sd(x)/sqrt(length(x)))
+}
+
+std.err.prop <- function(p, n) {
+    return(sqrt((p*(1-p)) / n))
+}
+
+logit <- function(p) {
+    return(log(p/(1-p)))
+}
+
+invlogit <- function(x) {
+    return(exp(x)/(1 + exp(x)))
+}
+
+```
+
+## Simulating the Central Limit Theorem
+
+
+## Simulating means for a t-test
+
+
+## Simulating "coin flips" for a chi-square test
+
