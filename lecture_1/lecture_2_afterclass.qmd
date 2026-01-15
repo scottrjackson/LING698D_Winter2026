@@ -1,0 +1,175 @@
+---
+title: "LING698D: Hierarchical modeling"
+subtitle: "Day 2"
+author: "Scott Jackson"
+date: "2026-01-14"
+---
+
+# Agenda
+
+1. Questions, review, problems
+2. GitHub
+3. Simulating a difference of means: t distribution
+
+Didn't get to: 
+4. Simple linear model: Galton height data
+5. Data for practice: McGowan et al. 2026
+
+# Loading libraries
+
+```{r}
+library(tidyverse)
+# didn't use the packages below yet
+# library(HistData)
+# library(pwr) # library with some exact-calculation power functions
+```
+
+# Review, questions
+
+- On CLT:
+  - **Clarification**: The CLT is more of a theoretical justification/explanation for why we commonly see normal distributions when there are many independent contributing factors to a measurement. It does *not* necessarily imply that any large data set should trend towards normality. If you take the *mean* of many values, and do that repeatedly, those means will trend towards a normal, the more values you're averaging over and the more independent those are.
+
+# GitHub
+
+- Repo URL is here: https://github.com/scottrjackson/LING698D_Winter2026
+  - I will update (at least) daily
+  - I will also upload files to ELMS
+  - I will post links to videos on ELMS describing how to set up git and basic usage, including usage with Positron
+  - If there is sufficient interest, I can make a similar video for RStudio
+    - **Update**: there was interest, so I will make a video for working with Git in RStudio
+
+
+# Simulating a difference of means
+
+## Generating and examining values from a normal distribution
+
+```{r}
+n_obs <- 1e5
+
+y_vals <- rnorm(n_obs, mean = 10, sd = 3)
+mean(y_vals)
+sd(y_vals)
+
+ggplot(data = NULL, aes(y_vals)) + geom_histogram(binwidth = .1)
+
+ggplot(data = NULL, aes(y_vals)) + geom_density()
+
+ggplot(data = NULL, aes(y_vals)) + 
+    geom_histogram(aes(y = after_stat(density)), binwidth = .05)
+
+y_densities <- dnorm(y_vals, mean = 10, sd = 3)
+
+# tips:
+# you can save ggplot plots to variables that you can later "print"
+# if you wrap an entire statement with (), it will also "print" the result
+(density_histplot <- ggplot(data = NULL, aes(y_vals)) + 
+    geom_histogram(aes(y = after_stat(density)), binwidth = .05, fill = "gray") +
+    geom_line(aes(y = y_densities), color = "red", linetype = 2) +
+    scale_x_continuous(breaks = seq(-2, 22, 3)))
+
+print(density_histplot)
+```
+
+## Useful sidetrack: saving and sharing plots
+
+- If you want to convert an entire notebook to an HTML document, which includes all of the plots in the notebook, you should do something like the following:
+  - **NB**: the parameter `eval = FALSE` in a code chunk signals that this code chunk should **not** be executed when rendering the document. In this case, this is to prevent an infinite loop of rendering a document which calls another render and so on.
+
+```{r, eval = FALSE}
+library(rmarkdown) # this provides the render() function
+render("path to your file here")
+```
+
+- By default, .Rmd and .qmd documents render to HTML, but you can also render to PDF or DOCX, but you may want to explore the documentation more on that:
+  - https://rmarkdown.rstudio.com/docs/index.html
+
+
+Alternatively, you can also save specific plots to standard graphics files like PNG, JPEG, BMP, TIFF, or even PDF (for vector graphics instead of bitmaps).
+
+To do this in R, there are basically three steps:
+1. Use a function to **open an output stream** to a different graphical "device"
+2. Print the plot(s) you want. Some formats support multiple "pages", some don't.
+3. Use the `dev.off()` function to **close the output stream**. This is necessary in order to "finalize" the file and so that you don't accidentally keep printing graphs to that file.
+
+In the example below:
+- I'm using the `png()` function with parameters like dimensions (which requires units, defaulting to pixels) and resolution (300 dpi is pretty standard "print-quality") to create a PNG file.
+- I'm printing a plot object I created in one of the code chunks above.
+- I'm "closing/finalizing" the file with `dev.off()`
+
+```{r}
+png("example_density_histplot.png", width = 10, height = 5,
+    units = "in", res = 300) 
+print(density_histplot) 
+dev.off()
+
+```
+
+
+## Uncertainty and hypothesis testing
+
+- We will focus on **estimates** as we proceed in this course.
+- **Standard errors** are the most common way to express *uncertainty* in your estimates.
+- **Null hypothesis significance testing** (NHST) requires a theory about the expected distribution of a test statistic.
+  - *p-values* can be best thought of as "how surprised you should be by the value of this test statistic, if you assume that the null hypothesis is true."
+  - The logic is that if a test statistic (e.g., a *t*-value) is large enough (or rather, the absolute value is large enough), that will produce a small enough *p*-value to justify **rejecting the null hypothesis**.
+
+The following defines the **standard error of the mean** formula, for when we want to express our uncertainty about the estimated mean value of set of values.
+
+```{r}
+# define standard error of a mean
+std_err_mean <- function(x) {
+    return(sd(x)/sqrt(length(x)))
+}
+
+n_obs <- 100
+mu <- 2
+sigma <- 5
+y_vals <- rnorm(n_obs, mean = mu, sd = sigma)
+mean(y_vals)
+sd(y_vals)
+
+std_err_mean(y_vals)
+
+(t_val <- mean(y_vals)/std_err_mean(y_vals))
+# rt(100, df = n_obs - 1)
+2*(1 - pt(t_val, df = n_obs - 1))
+t.test(y_vals)
+
+
+```
+
+
+## Simulating one-sample t-tests for power and false positives
+
+- By modifying the parameters of our hypothetical data (mean, standard deviation, and number of observations), we can explore the long-run likelihood of finding a significant result (i.e., estimate **power**), or verify that we get the expected false-positive rate predicted by our NHST procedure (e.g., ~5% chance of significant effect when p < .05 )
+
+```{r}
+
+n_obs <- 10
+mu <- 2
+sigma <- 5
+n_sims <- 1e4
+results <- data.frame(sim = 1:n_sims,
+                      mean = NA,
+                      t = NA,
+                      p = NA)
+for(this_sim in 1:n_sims) {
+    y_vals <- rnorm(n_obs, mean = mu, sd = sigma)
+    mean_y <- mean(y_vals)
+    t_val <- mean(y_vals)/std_err_mean(y_vals)
+    p_val <- 2*(1 - pt(abs(t_val), df = n_obs - 1))
+    results[this_sim, c("mean", "t", "p")] <- c(mean_y, t_val, p_val)
+}
+
+# 2*(1-pt(2, 99))
+# 2*(1-pt(abs(-2), 99))
+# mean(y_vals)
+# sd(y_vals)
+
+head(results)
+mean(results$p < .05)
+
+mean(results$mean[results$p < .05])
+
+print("bookmark, delete later")
+```
