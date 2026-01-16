@@ -1,0 +1,105 @@
+---
+title: "LING698D: Hierarchical modeling"
+subtitle: "Day 4"
+author: "Scott Jackson"
+date: "2026-01-16"
+---
+
+# Agenda
+
+1. Questions, review, problems
+2. Exploring Practice data
+
+# Questions
+
+
+
+# Loading libraries
+
+```{r}
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+
+```
+
+# Practicing with real data: McGowan et al. (2026)
+
+- Copy of Cognition paper loaded on ELMS
+- All data and sample code from here: https://osf.io/xej9k/files/osfstorage
+- Disclaimer: I am not attempting to criticize or endorse the paper; we are just using this as fodder for practice and illustration exercises.
+
+
+## Loading the data and renaming columns
+```{r}
+mcgowan <- read_csv("practice_data/Combined exp 2 - dataset - 248 participants.csv")
+colnames(mcgowan)
+mcgowan <- rename(mcgowan,
+                  subject = Participant_ID,
+                  sentence = Sentence_Type,
+                  exp = Experiment,
+                  loc = Location,
+                  trial = Trial_Number,
+                  RT = Reaction_Time,
+                  ACC = Accuracy,
+                  rate = Presentation_Rate)
+colnames(mcgowan)
+head(mcgowan)
+```
+
+## Some exploratory data analysis
+
+- histograms!
+- consider transformations
+- create subsets
+
+```{r}
+
+
+```
+
+# General Model Building Advice
+
+- **Remember**:
+  - Binary thinking is dangerous (i.e., thinking an effect is "real" or not)
+  - Focus on **estimates** and **uncertainty**
+  - It's okay to say "we can't conclude X from this data"!
+
+- Two *complementary* approaches (do both!):
+  1. **Explore** by starting simple, building up
+  2. **Draw inferences** with the most complex, *reasonable* model possible
+
+- Model comparison statistics/procedures:
+  1. **AIC** is a good general-purpose tool for comparing a "penalized" fit
+    - based on likelihood
+    - does not always prefer more complex models (like R^2 does)
+    - can *only* compare models with **identical** y values (thing you're predicting)
+    - **can** compare models with completely different sets of predictors
+      - (in other words: the *left* side of the model must be identical, but the *right* sides can be anything)
+    - numeric value doesn't indicate "how good" the fit is, just whether it's better than an alternative
+    - does not support traditional NHST hypothesis testing
+    - good guide for *exploration*, not usually sufficient for *inferences*
+  2. **Likelihood ratio tests** (aka LRT, aka "log likelihood test")
+    - negative 2 times the difference in log-likelihoods is assumed to have a chi-square distribution
+    - can **only** compare a simpler model vs. a more complex model
+    - i.e., the more complex model must "contain" the simpler model
+    - can be used in a hypothesis-testing framework
+      - but the p-values can be off
+
+- Scott's opinions:
+  - Using p-values/hypothesis-testing to find the "best" model can be problematic.
+  - Start off by building from simpler models to inform your own grasp of your data.
+  - Better to use a combination of "top-down" theory and "keep it maximal" within reason if you are hypothesis-testing.
+  - Don't be afraid to report a few different model results, as a kind of "sensitivity analysis".
+
+# Building to a mixed-effect model
+
+Some theory/background to discuss:
+- Maximum likelihood vs. REML
+- BLUPs vs. Estimates
+
+```{r}
+
+
+```
+

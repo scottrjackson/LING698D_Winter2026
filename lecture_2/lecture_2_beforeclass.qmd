@@ -2,33 +2,137 @@
 title: "LING698D: Hierarchical modeling"
 subtitle: "Day 2"
 author: "Scott Jackson"
-date: "2026-01-15"
+date: "2026-01-13"
 ---
 
 # Agenda
 
 1. Questions, review, problems
-2. Two-sample t-tests, t vs normal
-
+2. GitHub
+3. Simulating a difference of means: t distribution
+4. Simple linear model: Galton height data
+5. Data for practice: McGowan et al. 2026
 
 # Loading libraries
 
 ```{r}
 library(tidyverse)
 library(HistData)
+library(pwr) # library with some exact-calculation power functions
+```
+
+# Review, questions
+
+
+# GitHub
+
+- Repo URL is here: https://github.com/scottrjackson/LING698D_Winter2026
+  - I will update (at least) daily
+  - I will also upload files to ELMS
+  - I will post links to videos on ELMS describing how to set up git and basic usage, including usage with Positron
+  - If there is sufficient interest, I can make a similar video for RStudio
+
+
+# Simulating a difference of means
+
+## Generating and examining values from a normal distribution
+
+```{r}
+n_obs <- 1e5
+
+
+y_vals <- rnorm(n_obs, mean = 10, sd = 3)
+mean(y_vals)
+sd(y_vals)
+ggplot(data = NULL, aes(y_vals)) + geom_histogram(binwidth = .1)
+
+ggplot(data = NULL, aes(y_vals)) + geom_density()
+
+ggplot(data = NULL, aes(y_vals)) + 
+    geom_histogram(aes(y = after_stat(density)), binwidth = .05)
+
+y_densities <- dnorm(y_vals, mean = 10, sd = 3)
+
+(density_histplot <- ggplot(data = NULL, aes(y_vals)) + 
+    geom_histogram(aes(y = after_stat(density)), binwidth = .05, fill = "gray") +
+    geom_line(aes(y = y_densities), color = "red", linetype = 2) +
+    scale_x_continuous(breaks = seq(-2, 22, 3)))
+
+print(density_histplot)
+
+png("example_density_histplot.png", width = 10, height = 5,
+    units = "in", res = 300) 
+print(density_histplot) 
+dev.off()
 
 ```
 
-# Simulating two-sample t-tests for power and false positives
 
-## Define some helper functions
+
+
+## Uncertainty and hypothesis testing
 
 ```{r}
-# standard error of the mean for a single sample
+# define standard error of a mean
 std_err_mean <- function(x) {
     return(sd(x)/sqrt(length(x)))
 }
 
+n_obs <- 100
+mu <- 2
+sigma <- 5
+y_vals <- rnorm(n_obs, mean = mu, sd = sigma)
+mean(y_vals)
+sd(y_vals)
+
+std_err_mean(y_vals)
+
+(t_val <- mean(y_vals)/std_err_mean(y_vals))
+# rt(100, df = n_obs - 1)
+2*(1 - pt(t_val, df = n_obs - 1))
+t.test(y_vals)
+
+
+```
+
+
+## Simulating one-sample t-tests for power and false positives
+
+```{r}
+
+n_obs <- 10
+mu <- 2
+sigma <- 5
+n_sims <- 1e4
+results <- data.frame(sim = 1:n_sims,
+                      mean = NA,
+                      t = NA,
+                      p = NA)
+for(this_sim in 1:n_sims) {
+    y_vals <- rnorm(n_obs, mean = mu, sd = sigma)
+    mean_y <- mean(y_vals)
+    t_val <- mean(y_vals)/std_err_mean(y_vals)
+    p_val <- 2*(1 - pt(abs(t_val), df = n_obs - 1))
+    results[this_sim, c("mean", "t", "p")] <- c(mean_y, t_val, p_val)
+}
+
+# 2*(1-pt(2, 99))
+# 2*(1-pt(abs(-2), 99))
+# mean(y_vals)
+# sd(y_vals)
+
+head(results)
+mean(results$p < .05)
+
+mean(results$mean[results$p < .05])
+
+print("bookmark, delete later")
+```
+
+
+## Simulating two-sample t-tests for power and false positives
+
+```{r}
 # computing the standard error of a difference requires different formulae
 sd_pooled <- function(x, y) {
     return(sqrt(((length(x)-1)*var(x) + (length(y)-1)*var(y))/(length(x) + length(y) - 2)))
@@ -40,58 +144,6 @@ std_err_diff <- function(x, y) {
 
 ```
 
-## Run simulation loop for two-sample
-
-Demonstrate:
-- two-sample formulas
-- equivalence to R's built-in "Student's" t-test
-- "inflation" of estimate when power is low
-- distribution does follow a *t* distribution better than a normal distribution
-  - but they get very similar pretty quickly
-
-```{r}
-n_obs <- 5
-mu_x <- 30
-sigma_x <- 5
-
-difference <- 0
-
-mu_y <- mu_x + difference
-sigma_y <- 5
-
-n_sims <- 1e4
-results <- data.frame(sim = 1:n_sims,
-                      diff = NA,
-                      t = NA,
-                      #t_R = NA,
-                      p = NA)
-
-for(this_sim in 1:n_sims) {
-    if(this_sim %% 1000 == 0) { cat("on sim#: ", this_sim, "\n") }
-    x_vals <- rnorm(n_obs, mean = mu_x, sd = sigma_x)
-    y_vals <- rnorm(n_obs, mean = mu_y, sd = sigma_y)
-    this_estimate <- mean(y_vals) - mean(x_vals)
-    this_se <- std_err_diff(x_vals, y_vals)
-    this_t <- this_estimate/this_se
-    this_p <- 2*(1-pt(abs(this_t), df = n_obs*2 - 2))
-    this_test <- t.test(y_vals, x_vals, var.equal = TRUE)
-    results[this_sim, 2:5] <- c(this_estimate, this_t, this_p, this_test$statistic)
-}
-
-head(results)
-mean(results$p < .05)
-mean(results$diff[results$p < .05]) # inflated estimates under low power
-
-ggplot(results, aes(t)) + geom_density()
-
-t_densities <- dt(results$t, df = n_obs*2 - 2)
-norm_densities <- dnorm(results$t, mean(results$t), sd(results$t))
-
-ggplot(results, aes(t)) + geom_density() +
-    geom_line(aes(y = t_densities), color = "blue", linetype = 2) +
-    geom_line(aes(y = norm_densities), color = "red", linetype = 2)
-
-```
 
 # Simple linear models
 
@@ -149,6 +201,7 @@ Galton_long <- pivot_longer(Galton,
 
 ```{r}
 
+
 ```
 
 
@@ -178,11 +231,8 @@ head(mcgowan)
 
 ## Some exploratory data analysis
 
-- histograms!
-- consider transformations
-- create subsets
-
 ```{r}
 
 
 ```
+
