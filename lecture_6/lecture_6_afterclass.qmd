@@ -1,0 +1,187 @@
+---
+title: "LING698D: Hierarchical modeling"
+subtitle: "Day 6"
+author: "Scott Jackson"
+date: "2026-01-20"
+---
+
+# Agenda
+
+1. Questions/review
+2. Quick recap: BLUPs vs estimates
+3. More basic random effects: slopes and by-item effects
+4. Working with categorical predictors:
+  - interactions
+  - 3-level factors
+  - (dummy) coding
+5. Simulating to "compare" different DVs
+6. Simulating simple models
+
+# Loading libraries and McGowan data
+
+```{r}
+# NB: load multcomp before tidyverse, b/c multcomp loads MASS, which masks `select()`
+library(multcomp)  # for working with contrasts and multiple comparisons
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+```
+
+# Questions
+
+- why is intercept-only model the mean?
+  - b/c that's the best predictor when there are no (other) predictors
+
+# Redux
+
+## McGowan et al. 2026 data redux
+
+- Grammaticality judgment
+- Serial presentation
+- Critical ungrammaticality: word inversion (swapping adjacent positions)
+- Exp 2a = central presentation, 2b = "in situ" reading position
+- `trial`: trial number
+- `rate`: manipulated presentation rate (150ms or 250ms)
+
+```{r}
+mcgowan <- read_csv("practice_data/Combined exp 2 - dataset - 248 participants.csv")
+mcgowan <- rename(mcgowan,
+                  subject = Participant_ID,
+                  sentence = Sentence_Type,
+                  exp = Experiment,
+                  loc = Location,
+                  trial = Trial_Number,
+                  RT = Reaction_Time,
+                  ACC = Accuracy,
+                  rate = Presentation_Rate) %>%
+           mutate(logRT = log(RT),
+                  rate = as.factor(rate))
+
+mcgowan_RT <- filter(mcgowan, 
+                     sentence %in% c("control", "transposed"),
+                     RT >= 20, RT <= 20000, # pretty permissive filter
+                     ACC == 1)
+
+colnames(mcgowan_RT)
+head(mcgowan_RT)
+
+ggplot(mcgowan_RT, aes(logRT)) + geom_histogram()
+
+```
+
+
+
+# Quick recap: BLUPs vs Estimates
+
+```{r}
+rt_lm2 <- lm(logRT ~ 1 + trial + subject, data = mcgowan_RT)
+length(unique(mcgowan_RT$subject))
+summary(rt_lm2)
+rt_lm2_coeftable <- as.data.frame(summary(rt_lm2)$coefficients) %>%
+    mutate(coef = rownames(.))
+
+head(rt_lm2_coeftable)
+
+subj_estimates <- select(rt_lm2_coeftable, coef, Estimate) %>%
+    filter(grepl("^subject", coef)) %>% 
+    mutate(subject = gsub("subject", "", coef))
+head(subj_estimates)    
+
+rt_lmer2 <- lmer(logRT ~ 1 + trial + (1 | subject), data = mcgowan_RT)
+summary(rt_lmer2)
+head(ranef(rt_lmer2)$subject)
+subj_ranefs <- as.data.frame(ranef(rt_lmer2)$subject) %>%
+    mutate(subject = rownames(.))
+head(subj_ranefs)
+
+subj_est_by_blup <- subj_estimates %>% 
+    left_join(subj_ranefs, by = "subject")
+head(subj_est_by_blup)
+
+ggplot(subj_est_by_blup, aes(Estimate, `(Intercept)`)) + geom_point()
+
+ggplot(subj_est_by_blup, aes(Estimate - mean(Estimate), `(Intercept)`)) + geom_point() +
+    geom_abline(intercept = 0, slope = 1, color = "red", linetype = 2)
+
+```
+
+# More random effects: slopes, by-item, etc.
+
+```{r}
+rt_lm3 <- lm(logRT ~ 1 + trial + sentence, data = mcgowan_RT)
+summary(rt_lm3)
+
+rt_lmer3a <- lmer(logRT ~ 1 + trial + sentence + (1|subject), data = mcgowan_RT)
+summary(rt_lmer3a)
+
+rt_lmer3b <- lmer(logRT ~ 1 + trial + sentence + (1|subject) + (1|item), data = mcgowan_RT)
+summary(rt_lmer3b)
+
+rt_lmer3c <- lmer(logRT ~ 1 + trial + sentence + (1 + sentence|subject) + (1|item), data = mcgowan_RT)
+summary(rt_lmer3c)
+
+```
+
+# Working with categorical factors
+
+## Changing factor levels
+
+```{r}
+boudelaa <- read_csv("practice_data/boudelaa_exp1.csv")
+head(boudelaa)
+
+boud_correct <- filter(boudelaa, Error == 0)
+xtabs(~ Word_Type, boud_correct)
+
+ggplot(boud_correct, aes(log(RT))) + geom_histogram()
+
+boud_correct$logRT <- log(boud_correct$RT)
+
+boud_lmer1a <- lmer(logRT ~ 1 + Word_Type + (1 | Subject) + (1 | Target), data = boud_correct)
+summary(boud_lmer1a)
+
+
+boud_correct <- mutate(boud_correct,
+                       cond2 = ifelse(Word_Type %in% "2.MM", 1, 0),
+                       cond3 = ifelse(Word_Type %in% "3.Unamb", 1, 0))
+
+boud_correct %>% group_by(Word_Type, cond2, cond3) %>% summarize(count = n())
+
+boud_lmer1a_dummy <- lmer(logRT ~ 1 + cond2 + cond3 + (1 | Subject) + (1 | Target), data = boud_correct)
+summary(boud_lmer1a)
+summary(boud_lmer1a_dummy)
+
+
+boud_correct$Word_Type_ref2 <- factor(boud_correct$Word_Type, levels = c("2.MM", "1.MS", "3.Unamb"))
+
+boud_lmer1a_relevel <- lmer(logRT ~ 1 + Word_Type_ref2 + (1 | Subject) + (1 | Target), data = boud_correct)
+summary(boud_lmer1a_relevel)
+
+AIC(boud_lmer1a)
+AIC(boud_lmer1a_relevel)
+
+```
+
+## Creating contrasts with the `multcomp` package
+
+```{r}
+rt_lmer4b <- lmer(logRT ~ 1 + trial + sentence * rate + (1|subject) + (1|item), data = mcgowan_RT)
+summary(rt_lmer4b)
+
+ggplot(mcgowan_RT, aes(rate, logRT)) + geom_boxplot(aes(fill = sentence))
+mcgowan_RT %>% group_by(sentence, rate) %>% 
+    summarize(mean_logRT = mean(logRT)) 
+# showing more digits
+mcgowan_RT %>% group_by(sentence, rate) %>% 
+    summarize(mean_logRT = num(mean(logRT), digits = 4)) 
+
+test_contrasts <- rbind(c(0, 0, -1, 0, -1))
+rownames(test_contrasts) <- c("diff btwn ctrl and trans for 250 rate")
+
+#test_contrasts <- rbind(c(0, 0, 0, 0, 0))
+#rownames(test_contrasts) <- c()
+
+contest1D(rt_lmer4b, test_contrasts) # from lmerTest, only for single contrasts
+summary(glht(rt_lmer4b, test_contrasts)) # from multcomp
+
+```
