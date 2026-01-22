@@ -14,7 +14,7 @@ date: "2026-01-22"
 4. Fitting models using the Stan software and the `brms` package in R.
 5. Using `brms` to simulate data by setting "prior" parameters.
 
-# Questions
+# Questions/Review
 
 
 # Loading libraries and data
@@ -101,16 +101,18 @@ adjusted_controls <- lmerControl(optimizer="bobyqa", optCtrl=list(maxfun = 1e4))
 
 ```{r}
 # "maximal" model
-rt_lmer_full_ml <- lmer(logRT ~ 1 + 
-                     trial_scaled + sentence * rate +
-                     (1 + trial_scaled + sentence * rate | subject) +
-                     (1 + sentence * rate | item), 
-                     data = mcgowan_RT,
-                     REML = FALSE,
-                     verbose = TRUE,
-                     control = adjusted_controls)
+# rt_lmer_full_ml <- lmer(logRT ~ 1 + 
+#                      trial_scaled + sentence * rate +
+#                      (1 + trial_scaled + sentence * rate | subject) +
+#                      (1 + sentence * rate | item), 
+#                      data = mcgowan_RT,
+#                      REML = FALSE,
+#                      verbose = TRUE,
+#                      control = adjusted_controls)
 
+load("lecture_8/rt_lmer_full_ml.RData")
 summary(rt_lmer_full_ml)
+
 ```
 
 - work through different models
@@ -151,9 +153,8 @@ rt_brm_fullsubj <- brm(logRT ~ 1 + trial_scaled + sentence * rate +
                       data = mcgowan_RT,
                       chains = 4, warmup = 2000, iter = 4000)
 
-save(rt_brm_fullsubj, file = "lecture_8/rt_brm_fullsubj.RData")
+# save(rt_brm_fullsubj, file = "lecture_8/rt_brm_fullsubj.RData")
 load("lecture_8/rt_brm_fullsubj.RData")
-
 
 
 ```
@@ -172,7 +173,6 @@ default_prior(logRT ~ 1 + trial_scaled + sentence * rate +
                       data = mcgowan_RT)
 
 # for the "Intercept" prior
-
 
 sim_priors <- c(
   # marginal "Intercept"
