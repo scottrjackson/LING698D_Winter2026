@@ -1,0 +1,216 @@
+---
+title: "LING698D: Hierarchical modeling"
+subtitle: "Day 7"
+author: "Scott Jackson"
+date: "2026-01-21"
+---
+
+
+# Agenda
+
+1. Questions/review
+2. Simple random effect simulations
+3. Fitting problems and strategies
+
+# Questions
+
+
+# Loading libraries and data
+
+```{r}
+library(multcomp)  
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+
+```
+
+
+```{r}
+mcgowan <- read_csv("practice_data/Combined exp 2 - dataset - 248 participants.csv")
+mcgowan <- rename(mcgowan,
+                  subject = Participant_ID,
+                  sentence = Sentence_Type,
+                  exp = Experiment,
+                  loc = Location,
+                  trial = Trial_Number,
+                  RT = Reaction_Time,
+                  ACC = Accuracy,
+                  rate = Presentation_Rate) %>%
+           mutate(logRT = log(RT),
+                  rate = as.factor(rate))
+
+mcgowan_RT <- filter(mcgowan, 
+                     sentence %in% c("control", "transposed"),
+                     RT >= 20, RT <= 20000, # pretty permissive filter
+                     ACC == 1)
+
+mcgowan_RT_slow <- filter(mcgowan_RT, rate %in% "250")
+
+```
+
+# Simulating simple random effect models
+
+## Simple model to get some estimates
+
+- start by working through the data generation process "one time through"
+
+```{r}
+slow_lmer1a <- lmer(logRT ~ 1 + sentence + (1|subject), data = mcgowan_RT_slow)
+summary(slow_lmer1a)
+
+intercept_est <- 6.024
+transposition_effect <- 0.035
+subj_int_sd <- 0.437
+resid_sd <- 0.614
+
+trial_counts <- mcgowan_RT_slow %>% group_by(subject, sentence) %>% summarize(count= n()) 
+summary(trial_counts)
+
+length(unique(trial_counts$subject))
+
+n_subj <- 1000
+n_per_condition <- 100
+(subj_IDs <- paste0("subj", 1:n_subj))
+(items <- paste0("item", 1:n_per_condition))
+sim_data <- expand_grid(subject = subj_IDs, transposed = c(0, 1), item = items)
+
+sim_data$intercept <- intercept_est
+sim_data$trans_effect <- sim_data$transposed * transposition_effect
+
+subj_ranefs <- data.frame(subject = subj_IDs, 
+                          subj_int = rnorm(n_subj, mean = 0, sd = subj_int_sd))
+sim_data <- left_join(sim_data, subj_ranefs, by = "subject")
+
+sim_data$resid_error <- rnorm(nrow(sim_data), mean = 0, sd = resid_sd)
+sim_data <- mutate(sim_data,
+                   logRT = intercept + trans_effect + subj_int + resid_error)
+head(sim_data)
+summary(sim_data)
+
+ggplot(sim_data, aes(logRT)) + geom_histogram()
+
+sim_lmer1 <- lmer(logRT ~ 1 + transposed + (1|subject), data = sim_data)
+summary(sim_lmer1)
+```
+
+## Running a power analysis
+
+- put generation process into the simulation frame
+- run different "what if" scenarios
+
+```{r}
+# generating parameters "what if?" ground truth
+intercept_est <- 6.024
+transposition_effect <- 0.035
+subj_int_sd <- 0.437
+resid_sd <- 0.614
+
+n_subj <- 30
+n_per_condition <- 25
+
+n_sims <- 100
+results <- data.frame(sim = 1:n_sims,
+                      effect = NA,
+                      t = NA,
+                      p = NA)
+
+for(sim in 1:n_sims) {
+    if(sim %% 10 == 0) { cat("on sim #", sim, "\n")}
+    subj_IDs <- paste0("subj", 1:n_subj)
+    items <- paste0("item", 1:n_per_condition)
+    sim_data <- expand_grid(subject = subj_IDs, transposed = c(0, 1), item = items)
+
+    subj_ranefs <- data.frame(subject = subj_IDs, 
+                            subj_int = rnorm(n_subj, mean = 0, sd = subj_int_sd))
+    sim_data$intercept <- intercept_est
+    sim_data$trans_effect <- sim_data$transposed * transposition_effect
+    sim_data <- left_join(sim_data, subj_ranefs, by = "subject")
+    sim_data$resid_error <- rnorm(nrow(sim_data), mean = 0, sd = resid_sd)
+    sim_data <- mutate(sim_data,
+                    logRT = intercept + trans_effect + subj_int + resid_error)
+    sim_lmer1 <- lmer(logRT ~ 1 + transposed + (1|subject), data = sim_data)
+    sim_result <- summary(sim_lmer1)$coefficients["transposed", c("Estimate", "t value", "Pr(>|t|)")]
+    results[sim, 2:4] <- sim_result
+}
+
+head(results)
+mean(results$p < .05)
+mean(results$effect)
+mean(results$effect/results$t)
+
+```
+
+
+# Model-fitting problems
+
+- Goal: get to the "maximal sensible model"
+  - by subject, by item, perhaps other random effects
+  - random slopes for all "within subject/item" effects
+
+```{r}
+rt_lmer1a <- lmer(logRT ~ 1 + trial + (1|subject) + (1|item),
+                 data = mcgowan_RT)
+summary(rt_lmer1a)
+rt_lmer1b <- lmer(logRT ~ 1 + trial + (1 + trial|subject) + (1|item),
+                 data = mcgowan_RT)
+
+```
+
+- Uh oh!
+
+
+## Strategy 1: scale/transform predictors and/or DV
+
+- When numeric values are on different scales, convergence problems can occur
+
+```{r}
+mcgowan_RT <- mutate(mcgowan_RT,
+                     trial_scaled = (trial - 112)/20,
+                     logRT_c = logRT - mean(logRT))
+
+rt_lmer1b_scaled <- lmer(logRT_c ~ 1 + trial_scaled + (1 + trial_scaled|subject) + (1|item),
+                 data = mcgowan_RT)
+
+
+```
+
+## Strategy 2: adjust convergence settings (tolerances/maxeval)
+
+- simple: change optimizer, allow to run for longer
+- more detailed: going through tips here:
+  - https://lme4.github.io/lme4/reference/convergence.html
+
+```{r}
+adjusted_controls <- lmerControl(optimizer="bobyqa", optCtrl=list(maxfun = 1e4))
+
+rt_lmer1b_scaled <- lmer(logRT_c ~ 1 + trial_scaled + (1 + trial_scaled|subject) + (1|item),
+                 data = mcgowan_RT,
+                 control = adjusted_controls)
+
+summary(rt_lmer1b_scaled)
+
+mean(mcgowan_RT$logRT)
+
+```
+
+## Strategy 3: cut corners on the model
+
+- typical strategy is to reduce random effects, starting with correlation parameters
+- We will tackle this tomorrow.
+
+```{r}
+rt_lmer_full <- lmer(logRT_c ~ 1 +
+                     trial_scaled + sentence * rate +
+                     (1 + sentence * rate | subject) +
+                     (1 | item), data = mcgowan_RT)
+
+summary(rt_lmer_full)
+```
+
+
+## Strategy 4: change your technology 
+
+- Bayesian model-fitting
+- We'll dive in tomorrow!
+- We will also use this technology for data simulation with more complex models.
