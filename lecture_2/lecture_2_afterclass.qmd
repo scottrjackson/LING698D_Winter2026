@@ -171,5 +171,11 @@ mean(results$p < .05)
 
 mean(results$mean[results$p < .05])
 
+# the following line is a little "hack" for working with Positron/RStudio (see note below)
 print("bookmark, delete later")
 ```
+
+Short comment on the last line in the code chunk above:
+- Even when using notebook files like this one, I typically work using the the Ctrl/Cmd + Enter shortcut to "run a line of code and step to the next line".
+- This is quick, easy, and doesn't force me to use a mouse (and thus stave off carpal tunnel).
+- However, one of the quirks is that when you are at the end of a code chunk, this shortcut will send you into the next code chunk (if there is one). If this gets on your nerves, you can always just insert some "filler" line of code like this one to act as kind of a "backstop" where your cursor jumps to that isn't too annoyingly far away.

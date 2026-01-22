@@ -114,6 +114,8 @@ Some theory/background to discuss:
 - Maximum likelihood vs. REML
 - BLUPs vs. Estimates
 
+- filter and transform before analyzing RTs
+
 ```{r}
 colnames(mcgowan)
 xtabs(~ sentence, mcgowan)
@@ -124,41 +126,100 @@ mcgowan_RT <- filter(mcgowan_ungrammatical, ACC == 1)
 ggplot(mcgowan_RT, aes(log(RT))) + geom_histogram()
 
 mcgowan_RT$logRT <- log(mcgowan_RT$RT)
+```
 
+## Simple linear model example, with interpretations
+
+- start with some simple models
+- effect of "trial" shows a consistent speed-up over the course of the experiment
+  - not in the intended model/design
+  - but worth including as a "covariate"
+
+```{r}
+# intercept-only model
 rt_lm0 <- lm(logRT ~ 1, mcgowan_RT)
 summary(rt_lm0)
 
+# plot showing trial effect
 ggplot(mcgowan_RT, aes(trial, logRT)) + geom_point(alpha = .01) +
   geom_smooth(method = "lm")
 
+# simple model with effect of trial
 rt_lm1 <- lm(logRT ~ 1 + trial, mcgowan_RT)
 summary(rt_lm1)
 
 summary(mcgowan_RT$trial)
+```
 
-exp(6.44 - .0019)
+- This effect is statisticall significant, but is it important?
+- An effect estimate of -0.00194 seems pretty small!
+- But recall that this is the estimated effect **for every change in 1 unit of the predictor**
+- In this case, "one unit" is each successive trial, and there are 244 trials in the experiment.
+- Since these estimates are on the log scale, we can transform them back into regular reaction times (milliseconds) to get a sense of the overall size of the effect.
+- The intercept represents the avg time when trial == 0, so the estimated RT on the very first trial is the intercept plus the trial effect * 1, and the end of the experiment is estimated as the intercept plus the trial effect * 244.
 
-exp(6.44 - .0019*224)
+```{r}
+# at trial 1
+exp(6.44  + -.0019*1) # ~ 625ms
+
+# at trial 244
+exp(6.44 + -.0019*224) # ~ 410ms
 
 ```
 
+- So overall from the beginning to the end of the experiment, we're seeing a speed-up of over 200 ms, which seems substantial!
+
+
+## Simple random effect model (random intercept by subject)
+
+- We expect people to vary, where some people are overall faster or slower than others.
+- "Overall faster" refers to the intercept, because the intercept represents the mean logRT (not including effects).
+- We can fit a model with subject as a *fixed* effect if we wish, but since there are 248 subjects, we end up with a model that estimates the intercept for "subject zero" (by default, the subject with the alphabetically-first subject ID), plus 247 estimates of the differences between each other subject and this reference subject.
 
 ```{r}
 rt_lm2 <- lm(logRT ~ 1 + trial + subject, mcgowan_RT)
 length(unique(mcgowan_RT$subject))
 summary(rt_lm2)
+```
 
+- This is not a particularly helpful or useful model, because we care more about generalizing to *new* subjects, not estimating what each individual subject's differences are.
+- That's what a random intercept is for:
+  - The model assumes that the intercept varies for each subject.
+  - The model estimates not individual differences, but rather the variance (or standard deviation) of the random variation.
+  - In other words, it estimates **how much subjects vary**, around a mean difference of zero around the overall intercept estimate.
+
+```{r}
 rt_lmer2 <- lmer(logRT ~ 1 + trial + (1 | subject), mcgowan_RT)
 summary(rt_lmer2)
+```
 
-AIC(rt_lm1)
-AIC(rt_lm2)
+- We can see in the model output that the estimated variance is quite high, where the standard deviation of the random intercept is 0.4081.
+- In other words, the model is estimating that the "average subject" will have an intercept logRT of 6.47 (~ 645ms), but that subjects' mean logRTs vary with a standard deviation of 0.408.
+- If we do the conversion back to milliseconds, plus/minus two standard deviations means that most subjects' average RTs are expected to fall between ~285ms and ~1460ms, which is quite a large range!
+- This is a way of getting a feel for how big of a deal this random effect is.
+- But if we want another way to do model comparison, we need to re-fit the mixed-effects model with REML = FALSE, so that we can directly compare the (log-)likelihoods of these two models.
+- Once we do that, we can compare the AIC values, and the mixed-effect model has a much smaller AIC, so it's better.
+- And if we want to do a likelihood ratio test, we take -2 times the difference in log-likelihoods of the two models, and that quantity is expected to have a chi-square distribution, with degrees of freedom equal to the difference in degrees of freedom between the two models. This is the same as saying the number of parameters the more complex model has beyond the simpler model.
+- In the example below, if we get the log-likelihood of each model, we see they have 3 and 4 degrees of freedom, respectively, representing the fact that they have 3 and 4 parameters, respectively.
+  - In the simple model, we have the intercept + trial + error = three dfs.
+  - The more complex model just has one additional parameter, the standard deviation of the random intercept.
+  - So because these models differ by just 1 parameter, the chi-square test has 1 degree of freedom.
+- In this example, the difference in log-likelihoods between the models is so massive, with such a gigantic chi-square, that the p value is very very close to zero.
+- This test is usually called a "likelihood ratio test" (LRT).
+  - For the mathematically curious: the **ratio** of likelihoods (one divided by the other) is the same as the **difference** in *log*-likelihoods (because that's how the math of logs and exponents works), but the latter is much, much easier to compute, since the likelihoods themselves are so very very close to zero. 
 
-
+```{r}
 rt_lmer2_ml <- lmer(logRT ~ 1 + trial + (1 | subject), mcgowan_RT,
                  REML = FALSE)
+AIC(rt_lm1) # model with effect of trial
+AIC(rt_lmer2_ml) # model adding random intercept
 
-AIC(rt_lmer2_ml)
-head(ranef(rt_lmer2)$subject)
+(simple_regression_LL <- logLik(rt_lm1))
+(random_intercept_LL <- logLik(rt_lmer2_ml))
+
+chisq_value <- as.numeric(-2*(simple_regression_LL - random_intercept_LL))
+LRT_degrees_of_freedom <- 1 
+
+(LRT_pvalue <- 2*(1-pchisq(chisq_value, df = LRT_degrees_of_freedom)))
 
 ```

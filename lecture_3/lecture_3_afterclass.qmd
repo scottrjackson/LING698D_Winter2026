@@ -18,15 +18,32 @@ date: "2026-01-15"
 
 # Loading libraries
 
+- `HistData` is an interesting package that contains a bunch of "classic" historical data sets.
+- One of the rare packages that is pretty much just a collection of data sets without any new functions.
+- If you didn't realize that R packages often come with pre-loaded data sets, here's the skinny:
+  - You can run the function `data()` to list out all of the pre-loaded data sets that are currently available. This list is organized by package.
+  - All of these data sets are currently available, meaning that you can use their "namespace" normally (for example, the `sleep` dataframe is virtually always available), but these are not in the "Global Environment", meaning that they don't show up as variable when you use the `ls()` or `objects()` functions.
+  - This is why you might not have realized they were available, but it's nice because otherwise they would clutter up your variables workspace.
+- From `HistData` we'll use the Galton height data, since it's the classic origin of the work around "regression to the mean."
+
 ```{r}
 library(tidyverse)
 library(HistData)
-
 ```
 
 # Simulating two-sample t-tests for power and false positives
 
 ## Define some helper functions
+
+- Recall that the core focus should be on **estimates**, and uncertainty around that estimate, which can be quantified as a **standard error**.
+- When we divide an estimate by its standard error, we get something that's either assumed to follow a *t* distribution (like in linear model coefficients) or sometimes a *normal* distribution (for logistic model coefficients that are expressed as *z*-scores).
+- So often the mathematical trick is to know how to get the standard error.
+- The following functions implement the standard math for getting:
+  - the standard error of a mean for a single sample (not for a proportion)
+  - the standard error of the difference in the means between two independent samples, which in turn requires a formula for calculating...
+  - ... a pooled standard deviation when you are comparing two samples.
+- Most of the time our model-fitting functions like `lm()`, `glm()`, `lmer()`, `glmer()`, etc. do the math for us.
+- So these functions here are just so we can see the math for these simple cases.
 
 ```{r}
 # standard error of the mean for a single sample
@@ -47,12 +64,24 @@ std_err_diff <- function(x, y) {
 
 ## Run simulation loop for two-sample
 
-Demonstrate:
-- two-sample formulas
-- equivalence to R's built-in "Student's" t-test
-- "inflation" of estimate when power is low
-- distribution does follow a *t* distribution better than a normal distribution
-  - but they get very similar pretty quickly
+The following code chunk implements our now-familiar routine for running simulations:
+  1. Set up some parameters
+    - here, the mean of an `x` variable,
+    - the difference between that mean and the mean of a `y` variable, 
+    - the number of observations (here, we are simplifying things by making both samples the same length, but that's not necessary),
+    - and the standard deviations (referred to as `sigma`) of both variables 
+  2. Set up a data frame with "empty" cells that we intend to "fill in" with simulations
+    - here, we'll keep track of the observed difference (which we can compare with our "known" difference that we are setting up as a parameter), 
+    - the t-value, 
+    - the corresponding p-value, 
+    - and just as a demonstration, the t-value we get from R's built-in `t.test()` function.
+    - This last one is just to illustrate/confirm that R's function does get us the same results as our "manual" calculations.
+
+The goal of this is just to recap the process using a (very) slightly more complex example, the two-sample t-test.
+
+- Finally, we can use the plots to show the *t*-values (under a null hypothesis) really do follow a *t* distribution more closely than a *normal* distribution, but that the more observations we have, the closer and closer those distributions are to each other.
+  - **NB**: to show that the BLUE *t*-distribution line is a better match, you need to simulate using a value of zero for the `difference` variable. This is because the *t* distribution is always centered on zero. If the "true" difference is not zero, then the *t* values will be in the tails of the *t*-distribution, which is why they end up with small *p*-values.
+  - Note the use of `dt()` and `dnorm()` to calculate the *theoretical* probability densities of those distributions, which is what gets you the "perfect" distribution curves, rather than the always-slightly-imperfect densities of random vectors generated from those distributions.
 
 ```{r}
 n_obs <- 100
@@ -151,7 +180,22 @@ Galton$parent_c <- Galton$parent - mean(Galton$parent)
 
 galton_lm2 <- lm(child ~ 1 + parent_c, data = Galton)
 summary(galton_lm2)
+```
 
+## Examining the residuals and fitted values as a way of assessing a model fit
+
+- If you just take the model "predictions" without the Error component of the model, those are basically the values that fall on the line described by the linear equation (intercept + slope * predictor).
+- In other words, these fitted values fall on the **regression line**.
+- The differences between these predicted/fitted values and the actual *observed* values are called the **residuals**.
+- **The linear model assumes that residuals (aka errors) are normally distributed, with a mean of zero.**
+  - The logic of this assumption follows from the Central Limit Theorem (because errors are the result of many unrelated factors), and errors center around zero because if they weren't, our estimates would have systematic bias. If we have a process that estimates unbiased predictors, errors will average to zero (or numerically veerrrrry close to zero).
+
+- This means it's reassuring if we can plot our residuals and see a normally-distributed pattern.
+- Additionally, plotting residuals as a function of fitted values can be another way to diagnose problems.
+  - For example, if predictions in some ranges show a different pattern of errors than others, it might give us hints as to where our model is particularly bad, which might give us ideas for how to improve it.
+  - In other words, when we put fitted/predicted values on the x-axis and residuals on the y-axis, ideally we see a "flat cloud" that centers vertically around zero, but whatever pattern we see should make sense given our data.
+
+```{r}
 Galton$predicted_child <- galton_lm$fitted.values
 
 Galton$resid <- galton_lm$residuals
@@ -163,6 +207,7 @@ mean(Galton$resid)
 resid_densities <- dnorm(Galton$resid, mean = mean(Galton$resid), 
                          sd = sd(Galton$resid))
 
+# superimposing a "true" normal distribution to compare to the residual distribution
 ggplot(Galton, aes(resid)) + geom_density() +
     geom_line(aes(y = resid_densities), color = "blue", linetype = 2)
 
@@ -171,9 +216,10 @@ ggplot(Galton, aes(predicted_child, resid)) + geom_point()
 ggplot(Galton, aes(parent, child)) + geom_point() +
     geom_smooth(method = "lm")
 
+# "jittering" points (adding a little random "noise" in their position)
+# helps to display the data when points are being "overplotted" in overlapping positions
 ggplot(Galton, aes(parent, child)) + geom_jitter() +
     geom_smooth(method = "lm")
-
 
 ```
 
@@ -187,44 +233,11 @@ head(Galton_long)
 
 galton_diff_lm <- lm(height ~ 1 + person, Galton_long)
 
-
 summary(galton_diff_lm)
-print("bookmark")
+# compare to:
+t.test(Galton$parent, Galton$child)
+
+# t- and p-values are identical (not a coincidence!)
 
 ```
 
-
-# Practicing with real data: McGowan et al. (2026)
-
-- Copy of Cognition paper loaded on ELMS
-- All data and sample code from here: https://osf.io/xej9k/files/osfstorage
-- Disclaimer: I am not attempting to criticize or endorse the paper; we are just using this as fodder for practice and illustration exercises.
-
-
-## Loading the data and renaming columns
-```{r, eval = FALSE}
-mcgowan <- read_csv("practice_data/Combined exp 2 - dataset - 248 participants.csv")
-colnames(mcgowan)
-mcgowan <- rename(mcgowan,
-                  subject = Participant_ID,
-                  sentence = Sentence_Type,
-                  exp = Experiment,
-                  loc = Location,
-                  trial = Trial_Number,
-                  RT = Reaction_Time,
-                  ACC = Accuracy,
-                  rate = Presentation_Rate)
-colnames(mcgowan)
-head(mcgowan)
-```
-
-## Some exploratory data analysis
-
-- histograms!
-- consider transformations
-- create subsets
-
-```{r}
-
-
-```
