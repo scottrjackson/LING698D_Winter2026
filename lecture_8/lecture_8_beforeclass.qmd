@@ -1,0 +1,123 @@
+---
+title: "LING698D: Hierarchical modeling"
+subtitle: "Day 8"
+author: "Scott Jackson"
+date: "2026-01-22"
+---
+
+
+# Agenda
+
+1. Questions/review
+2. Continuing fitting strategies: simplifying random effect models
+3. Quick Bayesian intro
+4. Fitting models using the Stan software and the `brms` package in R.
+5. Using `brms` to simulate data by setting "prior" parameters.
+
+# Questions
+
+
+# Loading libraries and data
+
+```{r}
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+library(brms)
+
+```
+
+```{r}
+mcgowan <- read_csv("practice_data/Combined exp 2 - dataset - 248 participants.csv")
+mcgowan <- rename(mcgowan,
+                  subject = Participant_ID,
+                  sentence = Sentence_Type,
+                  exp = Experiment,
+                  loc = Location,
+                  trial = Trial_Number,
+                  RT = Reaction_Time,
+                  ACC = Accuracy,
+                  rate = Presentation_Rate) %>%
+           mutate(logRT = log(RT),
+                  rate = as.factor(rate))
+
+mcgowan_RT <- filter(mcgowan, 
+                     sentence %in% c("control", "transposed"),
+                     RT >= 20, RT <= 20000, # pretty permissive filter
+                     ACC == 1)
+
+mcgowan_RT_slow <- filter(mcgowan_RT, rate %in% "250")
+
+```
+
+# Continuing model-fitting strategies
+
+Quick recap:
+- Ideally, we fit the "maximal reasonable model", motivated by theory and design.
+- The math is hard, so even with packages like `lme4`, the software can fail to fit a complex model.
+- "Convergence" issues typically mean that:
+  - Something about your data is making it hard to fit the model.
+  - The iterative algorithm that is used to find the mathematical "solution" to the model-fitting process doesn't quite stabilize.
+- So we have a few different strategies to deal with this.
+
+## Strategy 1: check your data, and maybe make transformations
+
+- You may actually realize that something about the way your data is structured is a poor fit to the model you though was the "ideal" model.
+- Like maybe you are missing a bunch of observations so that some of the cells are empty or close to empty.
+- But also, scaling your numeric variables to have similar ranges of values can also help.
+- This is often the case if you have some kind of continuous predictor or covariate, like trial number or something.
+- In short, it's a good time to go carefully through your data.
+- And maybe you can center (subtract the mean) from some of your numeric variables, and divide/multiply them by something to get them on a similar scale.
+  - **Standardizing** variables (by subtracting mean and dividing by the standard deviation) is an option, but it might be unnecessary.
+  - One rule of thumb is to keep it as simple as possible so you can "undo" these transformations when you are trying to interpret your resulting parameter estimates.
+- See the Lecture 7 code, and the code below for an example of scaling a trial variable and centering the dependent variable.
+
+```{r}
+mcgowan_RT <- mutate(mcgowan_RT,
+                     trial_scaled = (trial - 112)/20,
+                     logRT_c = logRT - mean(logRT))
+```
+
+## Strategy 2: 
+
+- Another option is to modify the fitting algorithm, and two of the simplest things you can do are to pick a different "optimizer" (algorithm) and/or to simply allow the algorithm to run through more iterations (`maxfun`).
+- This can often work if your model convergence is just not quite reaching the target "tolerance" levels (i.e., changes between iterations).
+
+```{r}
+adjusted_controls <- lmerControl(optimizer="bobyqa", optCtrl=list(maxfun = 1e4))
+```
+
+## Strategy 3: cut corners on the model
+
+- Especially if you get "singularity" warnings, it may be the case that you just don't have enough data to effectively estimate all the parameters.
+- This can show up as some of the random effects have "perfect" (1 or -1) correlations with each other.
+- So the typical strategy is to reduce random effects, starting with correlation parameters.
+- This is always "sub-optimal", because it means you are having to cut some corners or make compromises with the model(s) you are able to fit and interpret.
+- But in practice, this is not that uncommon, and some have argued that it's not that bad of an idea to simply your model where appropriate, even when convergence isn't an issue.
+
+```{r}
+# "maximal" model
+rt_lmer_full <- lmer(logRT ~ 1 + 
+                     trial_scaled + sentence * rate +
+                     (1 + trial_scaled + sentence * rate | subject) +
+                     (1 + sentence * rate | item), 
+                     data = mcgowan_RT,
+                     )
+
+summary(rt_lmer_full)
+```
+
+
+## Strategy 4: change your technology 
+
+- Bayesian model-fitting
+- We will also use this technology for data simulation with more complex models.
+
+# Sidebar: very quick intro to Bayesian stats and model-fitting
+
+
+# Fitting models with brms
+
+```{r}
+
+```
