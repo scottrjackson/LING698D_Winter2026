@@ -1,0 +1,184 @@
+---
+title: "LING698D: Hierarchical modeling"
+subtitle: "Day 9"
+author: "Scott Jackson"
+date: "2026-01-23"
+---
+
+# Agenda
+
+1. Questions/review (part 1)
+2. Logistic MEM example
+3. Quick overview of Bayesian model-fitting using brms/Stan
+4. Example of fitting model using brms
+5. Using brms to simulate data from a model
+
+
+# Loading libraries and data
+
+```{r}
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+library(brms)
+library(bayesplot)
+
+```
+
+```{r}
+mcgowan <- read_csv("practice_data/Combined exp 2 - dataset - 248 participants.csv")
+mcgowan <- rename(mcgowan,
+                  subject = Participant_ID,
+                  sentence = Sentence_Type,
+                  exp = Experiment,
+                  loc = Location,
+                  trial = Trial_Number,
+                  RT = Reaction_Time,
+                  ACC = Accuracy,
+                  rate = Presentation_Rate) %>%
+           mutate(logRT = log(RT),
+                  rate = as.factor(rate))
+
+mcgowan_RT <- filter(mcgowan, 
+                     sentence %in% c("control", "transposed"),
+                     RT >= 20, RT <= 20000, # pretty permissive filter
+                     ACC == 1)
+
+mcgowan_RT <- mutate(mcgowan_RT,
+                     trial_scaled = (trial - 112)/20,
+                     logRT_c = logRT - mean(logRT))
+
+mcgowan_ACC <- filter(mcgowan, 
+                     sentence %in% c("control", "transposed"),
+                     RT >= 20, RT <= 20000) # pretty permissive filter
+```
+
+Some convenience functions below:
+
+```{r}
+
+logit <- function(p) {
+  return(log(p/(1-p)))
+}
+
+# logit of 0.5 == 0
+# smaller than 0.5 < 0, greater than 0.5 > 0
+
+invlogit <- function(x) {
+  return(exp(x)/(1 + exp(x)))
+}
+
+# invlogit of 0 is .5, invlogit < 0 are < .5, invlogit > 0 are > .5
+
+```
+
+
+# Logistic model example
+
+- family = "binomial"
+- in "log-odds" space
+
+```{r}
+acc_glm1 <- glm(ACC ~ 1 + sentence * rate, data = mcgowan_ACC, family = "binomial")
+summary(acc_glm1)
+
+mcgowan_ACC %>% group_by(sentence, rate) %>% summarize(mean_ACC = mean(ACC))
+invlogit(1.2)
+
+acc_lmer1a <- glmer(ACC ~ 1 + sentence * rate + (1|subject) + (1|item), 
+                   data = mcgowan_ACC, family = "binomial")
+acc_lmer1b <- glmer(ACC ~ 1 + sentence * rate + (1 + sentence | subject) + (1|item), 
+                   data = mcgowan_ACC, family = "binomial")
+
+summary(acc_lmer1a)
+summary(acc_lmer1b)
+
+```
+
+
+# Model-fitting strategies
+
+## Strategy 4: change your technology 
+
+- Bayesian model-fitting
+- We will also use this technology for data simulation with more complex models.
+
+# Sidebar: very quick intro to Bayesian stats and model-fitting
+
+
+# Fitting models with brms (Bayesian)
+
+```{r}
+rt_brm1 <- brm(logRT ~ 1 + trial_scaled + sentence * rate + 
+                      (1|subject) +
+                      (1|item),
+                      data = mcgowan_RT)
+base_posteriors <- as_draws_df(rt_brm1)
+colnames(base_posteriors)
+mcmc_trace(rt_brm1, pars = colnames(base_posteriors)[1:4])
+mcmc_trace(rt_brm1, pars = colnames(base_posteriors)[5:8])
+summary(rt_brm1)
+names(summary(rt_brm1))
+summary(rt_brm1)$fixed
+summary(rt_brm1)$random
+prior_summary(rt_brm1)
+
+# rt_brm_full <- brm(logRT ~ 1 + trial_scaled + transposed * slower_rate + 
+#                      (1 + trial_scaled + transposed * slower_rate | subject) +
+#                      #(0 + trial_scaled | subject) +
+#                      (1 + transposed * slower_rate | item),
+#                       data = mcgowan_RT,
+#                       chains = 4, warmup = 2000, iter = 4000)
+save(rt_brm_full, file = "lecture_9/rt_brm_full.RData")
+summary(rt_brm_full)
+
+```
+
+
+# Using priors to simulate data
+
+- prior = sim_priors, sample_prior = "only"
+
+```{r}
+prior_summary(rt_brm_full)
+
+default_prior(logRT ~ 1 + trial_scaled + sentence * rate + 
+                     (1 + trial_scaled + sentence * rate | subject),
+                     # (1 + sentence * rate | item),
+                      data = mcgowan_RT)
+
+rt_lmer_fit <- lmer(logRT ~ 1 + trial_scaled + sentence * rate + 
+                     (1 + trial_scaled + sentence * rate | subject),
+                     # (1 + sentence * rate | item),
+                      data = mcgowan_RT)
+summary(rt_lmer_fit)
+
+# for the "Intercept" prior
+mean(mcgowan_RT$logRT)
+
+sim_priors <- c(
+  # marginal "Intercept"
+  set_prior("normal(6.226, 0.024)", class = "Intercept"),
+  # "fixed effects"
+  set_prior("normal( , )", class = "b", coef = "trial_scaled"),
+  set_prior("normal( , )", class = "b", coef = "sentence"),
+  set_prior("normal( , )", class = "b", coef = "rate"),
+  set_prior("normal( , )", class = "b", coef = "sentence:rate"),
+  # "random effects"
+  # subject-level
+  set_prior("normal( , )", class = "sd", coef = "Intercept", group = "subject"),
+  set_prior("normal( , )", class = "sd", coef = "trial_scaled", group = "subject"),
+  set_prior("normal( , )", class = "sd", coef = "sentence", group = "subject"),
+  set_prior("normal( , )", class = "sd", coef = "rate", group = "subject"),
+  set_prior("normal( , )", class = "sd", coef = "sentence:rate", group = "subject")
+  # item-level)
+
+rt_sim_fit <- brm(logRT ~ 1 + trial_scaled + sentence * rate + 
+                     (1 + trial_scaled + sentence * rate | subject),
+                     # (1 + sentence * rate | item),
+                      data = mcgowan_RT,
+                           chains = 4, warmup = 2000, iter = 4500, # generates (4500 - 2000) * 4 = 10,000 samples
+                      )
+
+
+```
